@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { classifyExit, DROP_Y, DROP_Z, HALF_W, HOLE, KILL_Y, PLATE_Z, type ExitKind, type Machine } from './world';
+import { classifyExit, DROP_Y, DROP_Z, FRONT_Z, HALF_W, HOLE, KILL_Y, PLATE_Z, type ExitKind, type Machine } from './world';
 
 export type CoinKindId = 'normal' | 'gold' | 'gem' | 'bomb' | 'big';
 
 export const GEM_COLORS = [0xff3b5c, 0x33d17a, 0x3ea0ff, 0xffd23f, 0xb15cff] as const;
 export const GEM_NAMES = ['紅寶石', '翡翠', '藍寶石', '黃玉', '紫晶'] as const;
 export const MAX_BODIES = 300;
+/** Dev only: forward speed and distance past the front edge of each coin that paid out. */
+export const devFrontExits: { vz: number; dz: number }[] = [];
 const COIN_FRICTION = 0.3;
+/** Rapier contacts are stiff, so the pile passes the slab's full speed to the front coins; this bleeds it off so they leave at the old cannon-es pace. */
+const LINEAR_DAMPING = 1.0;
 const ANGULAR_DAMPING = 0.4;
 
 export interface CoinRef {
@@ -193,7 +197,7 @@ export class CoinSystem {
     const desc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z)
       .setLinvel(0, vy, 0)
-      .setLinearDamping(0.2)
+      .setLinearDamping(LINEAR_DAMPING)
       .setAngularDamping(ANGULAR_DAMPING);
     // Flat discs only slide and stack. Free discs stood on edge and rolled into the jackpot hole, and their
     // funnelled fall made the hole too easy to hit; bombs stay free so they still roll.
@@ -341,6 +345,7 @@ export class CoinSystem {
       if (!coin.exited) {
         const exit = classifyExit(p);
         if (exit) {
+          if (import.meta.env.DEV && exit === 'win') devFrontExits.push({ vz: b.linvel().z, dz: p.z - FRONT_Z });
           coin.exited = exit;
           this.events.exit(coin.def, exit);
           coin.def.onExit?.(this.ctx, coin, exit);

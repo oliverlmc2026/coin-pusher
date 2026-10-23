@@ -1,7 +1,7 @@
 import './style.css';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Sfx } from './audio';
-import { CoinSystem, MAX_BODIES, type CoinKindDef, type CoinKindId, type KindCtx } from './coins';
+import { CoinSystem, devFrontExits, MAX_BODIES, type CoinKindDef, type CoinKindId, type KindCtx } from './coins';
 import { Game } from './game';
 import { Input } from './input';
 import { Pusher } from './pusher';
@@ -304,6 +304,7 @@ if (import.meta.env.DEV) {
     get slotPhase() {
       return slot.state.phase;
     },
+    frontExits: devFrontExits,
     get counters() {
       return { ...counters };
     },
@@ -333,6 +334,7 @@ declare global {
       readonly save: SaveData;
       spawn(kind: CoinKindId): void;
       collectGem(color: number): void;
+      readonly frontExits: { vz: number; dz: number }[];
       readonly counters: { wins: number; losts: number; jackpots: number; winCredits: number };
       drop(x: number): boolean;
       forceSlot(outcomeId?: string): void;
