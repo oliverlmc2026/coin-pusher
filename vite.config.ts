@@ -18,6 +18,8 @@ const perfLog = (): Plugin => ({
 });
 
 export default defineConfig({
+  // Relative base so the build works under GitHub Pages' /coin-pusher/ path.
+  base: './',
   plugins: [perfLog()],
   server: { host: true },
   build: { chunkSizeWarningLimit: 1200 },

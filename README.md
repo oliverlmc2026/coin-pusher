@@ -1,5 +1,7 @@
 # 推銀仔機
 
+線上玩：https://oliverlmc2026.github.io/coin-pusher/
+
 瀏覽器 3D 推銀仔機遊戲。Vite + TypeScript + three.js + Rapier (WASM)，冇後端，進度存喺 localStorage。
 
 ## 點樣行
