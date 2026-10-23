@@ -1,4 +1,5 @@
 import './style.css';
+import { Sfx } from './audio';
 import { CoinSystem, MAX_BODIES, type CoinKindDef, type CoinKindId, type KindCtx } from './coins';
 import { Game } from './game';
 import { Input } from './input';
@@ -24,21 +25,7 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLElement;
 
 const game = new Game(loadSave());
-const sfx = {
-  muted: false,
-  resume() {},
-  drop() {},
-  win(_v: number) {},
-  lost() {},
-  bomb() {},
-  spinTick() {},
-  spinStart() {},
-  jackpot() {},
-  gem() {},
-  buy() {},
-  deny() {},
-  click() {},
-};
+const sfx = new Sfx(game.save.muted);
 const machine = new Machine(canvas);
 const pusher = new Pusher(machine.pusherBody);
 
