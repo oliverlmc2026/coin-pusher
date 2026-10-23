@@ -261,7 +261,10 @@ if (import.meta.env.DEV) {
       slot.trigger();
     },
     advance(seconds: number) {
-      for (let i = 0; i < seconds / FIXED; i++) fixedStep();
+      for (let i = 0; i < seconds / FIXED; i++) {
+        fixedStep();
+        slot.update(FIXED);
+      }
     },
     giveCredits: (n: number) => game.addCredits(n),
   };
