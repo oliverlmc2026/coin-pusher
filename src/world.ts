@@ -7,8 +7,8 @@ export const PLATE_Z = -4.25;
 export const FLOOR_BACK_Z = -9;
 export const SLAB_TOP = 0.9;
 export const PUSH_MIN = -3.7;
-export const PUSH_MAX = 0.3;
-export const HOLE = { x0: -0.8, x1: 0.8, z0: 1.4, z1: 2.6 } as const;
+export const PUSH_MAX = 1.3;
+export const HOLE = { x0: -0.55, x1: 0.55, z0: 2.4, z1: 3.3 } as const;
 export const DROP_Y = 4.5;
 export const DROP_Z = -2.6;
 export const KILL_Y = -3.5;
@@ -119,7 +119,7 @@ export class Machine {
         }),
       );
     pair(m.coin, m.coin, 0.45, 0.05);
-    pair(m.coin, m.floor, 0.35, 0.05);
+    pair(m.coin, m.floor, 0.25, 0.05);
     pair(m.coin, m.slab, 0.5, 0.03);
     pair(m.coin, m.rail, 0.1, 0.05);
 
