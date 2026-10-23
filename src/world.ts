@@ -17,10 +17,12 @@ const RAIL_LEN = FRONT_Z - PLATE_Z;
 const RAIL_BODY_H = 4;
 /** Physical rail top sits this far below the drawn one, so coins pushed hard into a low rail can ride over it as they did before the Rapier port. */
 const RAIL_SINK = 0.1;
-/** Open gap between a side rail and the cabinet wall, wider than the largest coin radius so coins pushed over the rail tip into it instead of resting against the wall. */
-const GUTTER = 0.9;
+const RAIL_OUTER = RAIL_X + 0.15;
+/** Open gap between a side rail and the cabinet wall: just wider than a bomb (the widest coin that cannot tip on edge), too narrow for a disc to lie across it. */
+const GUTTER = 0.85;
+const CAB_IN = RAIL_OUTER + GUTTER;
 const CAB_T = 0.5;
-const CAB_X = RAIL_X + 0.15 + GUTTER + CAB_T / 2;
+const CAB_X = CAB_IN + CAB_T / 2;
 const CAB_HALF_W = CAB_X + CAB_T / 2;
 const CAB_Y = -0.3;
 const CAB_H = 1.4;
@@ -38,6 +40,8 @@ export type ExitKind = 'win' | 'lost' | 'jackpot';
  * deliberately not used: a position test is stable under body pooling.
  */
 export function classifyExit(p: { x: number; y: number; z: number }): ExitKind | null {
+  // Past a side rail the coin can only drop into the gutter; calling it early lets it stop hitting other coins on the way down.
+  if (Math.abs(p.x) > RAIL_OUTER && p.y < 1) return 'lost';
   if (p.y > -0.45) return null;
   if (p.x > HOLE.x0 && p.x < HOLE.x1 && p.z > HOLE.z0 && p.z < HOLE.z1) return 'jackpot';
   if (Math.abs(p.x) > HALF_W) return 'lost';
@@ -120,10 +124,11 @@ export class Machine {
     // Back plate: lower edge sits just above the pusher top so it scrapes coins off the slab.
     box(HALF_W + 0.3, 2, 0.2, 0, SLAB_TOP + 0.1 + 2, PLATE_Z, RAIL_FRICTION);
     // Cabinet walls bounding each side gutter, so coins falling past a rail cannot pass through them.
-    const gutterIn = RAIL_X + 0.15;
+    // Frictionless, so a coin leaning on one slides down into the gutter instead of hanging there.
+    const gutterIn = RAIL_OUTER;
     for (const side of [-1, 1]) {
-      box(CAB_T / 2, CAB_H / 2, (CAB_Z1 - CAB_Z0) / 2, side * CAB_X, CAB_Y, (CAB_Z0 + CAB_Z1) / 2, RAIL_FRICTION);
-      box(GUTTER / 2, CAB_H / 2, 0.25, side * (gutterIn + GUTTER / 2), CAB_Y, FRONT_Z + 0.25, RAIL_FRICTION);
+      box(CAB_T / 2, CAB_H / 2, (CAB_Z1 - CAB_Z0) / 2, side * CAB_X, CAB_Y, (CAB_Z0 + CAB_Z1) / 2, 0).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
+      box(GUTTER / 2, CAB_H / 2, 0.25, side * (gutterIn + GUTTER / 2), CAB_Y, FRONT_Z + 0.25, 0).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
     }
   }
 
@@ -255,7 +260,7 @@ export class Machine {
     plate.add(sign);
 
     const cab = new THREE.MeshStandardMaterial({ color: 0x5b1636, roughness: 0.6 });
-    const gutterIn = RAIL_X + 0.15;
+    const gutterIn = RAIL_OUTER;
     for (const side of [-1, 1]) {
       addBox(CAB_T, CAB_H, CAB_Z1 - CAB_Z0, side * CAB_X, CAB_Y, (CAB_Z0 + CAB_Z1) / 2, cab, true);
       addBox(GUTTER, CAB_H, 0.5, side * (gutterIn + GUTTER / 2), CAB_Y, FRONT_Z + 0.25, cab, true);

@@ -14,6 +14,15 @@ const COIN_FRICTION = 0.3;
 const LINEAR_DAMPING = 1.0;
 /** Discs whose centre reaches the front lip may pitch, so they tip off it like real coins instead of sailing off flat. Earlier pitch let coins dive into the jackpot hole and wedge under each other. */
 const TIP_FROM_Z = FRONT_Z - 0.05;
+/** Likewise discs whose centre is over a side rail may roll, so they tip edge-on into the narrow side gutter. */
+const TIP_FROM_X = HALF_W - 0.05;
+/** Lost coins are recycled once out of sight below the cabinet, or after this long if one somehow wedges on the way. */
+const LOST_HIDE_Y = -1.5;
+const LOST_MAX_AGE = 1.5;
+/** Every coin is in this collision group; a lost coin stops colliding with it so lost coins cannot jam each other in the side gutter. */
+const COIN_GROUP = 0x0002;
+const COIN_GROUPS = (COIN_GROUP << 16) | 0xffff;
+const LOST_GROUPS = (COIN_GROUP << 16) | (0xffff & ~COIN_GROUP);
 const ANGULAR_DAMPING = 0.4;
 
 export interface CoinRef {
@@ -106,7 +115,9 @@ interface Coin extends CoinRef {
   exited: ExitKind | null;
   rest: number;
   synced: boolean;
-  canTip: boolean;
+  tipFront: boolean;
+  tipSide: boolean;
+  exitAge: number;
 }
 
 interface KindRuntime {
@@ -207,7 +218,7 @@ export class CoinSystem {
     if (def.shape === 'disc') desc.lockRotations();
     const body = w.createRigidBody(desc);
     const shape = def.shape === 'sphere' ? RAPIER.ColliderDesc.ball(def.radius) : RAPIER.ColliderDesc.cylinder(def.height / 2, def.radius);
-    w.createCollider(shape.setMass(def.mass).setFriction(COIN_FRICTION).setRestitution(0.05), body);
+    w.createCollider(shape.setMass(def.mass).setFriction(COIN_FRICTION).setRestitution(0.05).setCollisionGroups(COIN_GROUPS), body);
     return body;
   }
 
@@ -252,7 +263,9 @@ export class CoinSystem {
       exited: null,
       rest: 0,
       synced: false,
-      canTip: false,
+      tipFront: false,
+      tipSide: false,
+      exitAge: 0,
       pos: { ...pos },
     });
   }
@@ -345,9 +358,14 @@ export class CoinSystem {
       coin.pos.x = p.x;
       coin.pos.y = p.y;
       coin.pos.z = p.z;
-      if (!coin.canTip && coin.def.shape === 'disc' && p.z > TIP_FROM_Z) {
-        coin.canTip = true;
-        b.setEnabledRotations(true, false, false, true);
+      if (coin.def.shape === 'disc') {
+        const front = coin.tipFront || p.z > TIP_FROM_Z;
+        const side = coin.tipSide || Math.abs(p.x) > TIP_FROM_X;
+        if (front !== coin.tipFront || side !== coin.tipSide) {
+          coin.tipFront = front;
+          coin.tipSide = side;
+          b.setEnabledRotations(front, false, side, true);
+        }
       }
 
       if (!coin.exited) {
@@ -355,6 +373,7 @@ export class CoinSystem {
         if (exit) {
           if (import.meta.env.DEV && exit === 'win') devFrontExits.push({ vz: b.linvel().z, dz: p.z - FRONT_Z });
           coin.exited = exit;
+          if (exit === 'lost') b.collider(0).setCollisionGroups(LOST_GROUPS);
           this.events.exit(coin.def, exit);
           coin.def.onExit?.(this.ctx, coin, exit);
         } else if (coin.def.onSettle && coin.def.settleAfter !== undefined) {
@@ -367,7 +386,9 @@ export class CoinSystem {
         }
       }
       // Coins can be squeezed through the back plate by the retracting slab; they are unreachable, so recycle them.
-      if (p.y < KILL_Y || p.z < PLATE_Z - 0.4) this.release(i);
+      if (coin.exited === 'lost') coin.exitAge += dt;
+      const lostGone = coin.exited === 'lost' && (p.y < LOST_HIDE_Y || coin.exitAge > LOST_MAX_AGE);
+      if (p.y < KILL_Y || p.z < PLATE_Z - 0.4 || lostGone) this.release(i);
     }
   }
 
