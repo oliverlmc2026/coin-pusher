@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
+import RAPIER from '@dimforge/rapier3d-compat';
 
 export const HALF_W = 5;
 export const FRONT_Z = 5.2;
@@ -8,13 +8,19 @@ export const FLOOR_BACK_Z = -9;
 export const SLAB_TOP = 0.9;
 export const PUSH_MIN = -3.7;
 export const PUSH_MAX = 1.3;
-export const HOLE = { x0: -0.55, x1: 0.55, z0: 2.4, z1: 3.3 } as const;
+export const HOLE = { x0: -0.55, x1: 0.55, z0: 2.3, z1: 3.4 } as const;
 export const DROP_Y = 4.5;
 export const DROP_Z = -2.6;
 export const KILL_Y = -3.5;
 const RAIL_X = HALF_W + 0.15;
 const RAIL_LEN = FRONT_Z - PLATE_Z;
 const RAIL_BODY_H = 4;
+/** Physical rail top sits this far below the drawn one, so coins pushed hard into a low rail can ride over it as they did before the Rapier port. */
+const RAIL_SINK = 0.1;
+/** Coins use friction 0.45 with the default Average combine rule, so these give pair values of about 0.25 / 0.5 / 0.1. */
+const FLOOR_FRICTION = 0.05;
+const SLAB_FRICTION = 0.55;
+const RAIL_FRICTION = 0.1;
 
 export type ExitKind = 'win' | 'lost' | 'jackpot';
 
@@ -29,13 +35,6 @@ export function classifyExit(p: { x: number; y: number; z: number }): ExitKind |
   if (p.z > FRONT_Z - 0.3) return 'win';
   if (p.y < -2) return 'lost';
   return null;
-}
-
-export interface Materials {
-  coin: CANNON.Material;
-  floor: CANNON.Material;
-  slab: CANNON.Material;
-  rail: CANNON.Material;
 }
 
 interface Burst {
@@ -66,13 +65,12 @@ export class Machine {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(40, 1, 0.5, 120);
-  readonly physics = new CANNON.World({ gravity: new CANNON.Vec3(0, -30, 0) });
-  readonly materials: Materials;
-  readonly pusherBody: CANNON.Body;
+  readonly physics = new RAPIER.World({ x: 0, y: -30, z: 0 });
+  readonly pusherBody: RAPIER.RigidBody;
   readonly dropPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -DROP_Y);
 
   private readonly slabMesh: THREE.Mesh;
-  private readonly rails: { body: CANNON.Body; mesh: THREE.Mesh }[] = [];
+  private readonly rails: { body: RAPIER.RigidBody; mesh: THREE.Mesh }[] = [];
   private readonly bursts: Burst[] = [];
   private railTop = 0;
   private readonly aim: THREE.Mesh;
@@ -84,85 +82,65 @@ export class Machine {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.scene.background = new THREE.Color(0x120a1f);
 
-    this.materials = this.buildPhysics();
+    this.buildPhysics();
     this.pusherBody = this.buildPusherBody();
     this.slabMesh = this.buildScene();
     this.aim = this.buildAim();
     this.buildRails();
   }
 
-  private buildPhysics(): Materials {
+  private buildPhysics(): void {
     const w = this.physics;
-    w.allowSleep = true;
-    w.broadphase = new CANNON.SAPBroadphase(w);
-    const solver = w.solver as CANNON.GSSolver;
-    solver.iterations = 8;
-    solver.tolerance = 1e-3;
-    w.defaultContactMaterial.contactEquationStiffness = 5e6;
-    w.defaultContactMaterial.contactEquationRelaxation = 4;
+    w.timestep = 1 / 60;
+    w.integrationParameters.numSolverIterations = 4;
 
-    const m: Materials = {
-      coin: new CANNON.Material('coin'),
-      floor: new CANNON.Material('floor'),
-      slab: new CANNON.Material('slab'),
-      rail: new CANNON.Material('rail'),
-    };
-    const pair = (a: CANNON.Material, b: CANNON.Material, friction: number, restitution: number) =>
-      w.addContactMaterial(
-        new CANNON.ContactMaterial(a, b, {
-          friction,
-          restitution,
-          contactEquationStiffness: 5e6,
-          contactEquationRelaxation: 4,
-          frictionEquationStiffness: 5e6,
-          frictionEquationRelaxation: 4,
-        }),
+    const box = (hx: number, hy: number, hz: number, x: number, y: number, z: number, friction: number) =>
+      w.createCollider(
+        RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, y, z).setFriction(friction).setRestitution(0.05),
       );
-    pair(m.coin, m.coin, 0.45, 0.05);
-    pair(m.coin, m.floor, 0.25, 0.05);
-    pair(m.coin, m.slab, 0.5, 0.03);
-    pair(m.coin, m.rail, 0.1, 0.05);
-
-    const box = (hx: number, hy: number, hz: number, x: number, y: number, z: number, mat: CANNON.Material) => {
-      const b = new CANNON.Body({ type: CANNON.Body.STATIC, material: mat });
-      b.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz)));
-      b.position.set(x, y, z);
-      w.addBody(b);
-      return b;
-    };
     // Floor tiles around the jackpot hole. Thickness 1 so fast coins cannot tunnel through.
     const hx = (HOLE.x1 - HOLE.x0) / 2;
     const backLen = HOLE.z0 - FLOOR_BACK_Z;
-    box(HALF_W, 0.5, backLen / 2, 0, -0.5, FLOOR_BACK_Z + backLen / 2, m.floor);
+    box(HALF_W, 0.5, backLen / 2, 0, -0.5, FLOOR_BACK_Z + backLen / 2, FLOOR_FRICTION);
     const frontLen = FRONT_Z - HOLE.z1;
-    box(HALF_W, 0.5, frontLen / 2, 0, -0.5, HOLE.z1 + frontLen / 2, m.floor);
+    box(HALF_W, 0.5, frontLen / 2, 0, -0.5, HOLE.z1 + frontLen / 2, FLOOR_FRICTION);
     const midLen = HOLE.z1 - HOLE.z0;
     const sideW = HALF_W - hx;
-    box(sideW / 2, 0.5, midLen / 2, -(hx + sideW / 2), -0.5, HOLE.z0 + midLen / 2, m.floor);
-    box(sideW / 2, 0.5, midLen / 2, hx + sideW / 2, -0.5, HOLE.z0 + midLen / 2, m.floor);
+    box(sideW / 2, 0.5, midLen / 2, -(hx + sideW / 2), -0.5, HOLE.z0 + midLen / 2, FLOOR_FRICTION);
+    box(sideW / 2, 0.5, midLen / 2, hx + sideW / 2, -0.5, HOLE.z0 + midLen / 2, FLOOR_FRICTION);
     // Back plate: lower edge sits just above the pusher top so it scrapes coins off the slab.
-    box(HALF_W + 0.3, 2, 0.2, 0, SLAB_TOP + 0.1 + 2, PLATE_Z, m.rail);
-    return m;
+    box(HALF_W + 0.3, 2, 0.2, 0, SLAB_TOP + 0.1 + 2, PLATE_Z, RAIL_FRICTION);
   }
 
-  private buildPusherBody(): CANNON.Body {
-    const body = new CANNON.Body({ type: CANNON.Body.KINEMATIC, material: this.materials.slab });
-    body.addShape(new CANNON.Box(new CANNON.Vec3(HALF_W - 0.02, SLAB_TOP / 2, 4)));
-    body.position.set(0, SLAB_TOP / 2, PUSH_MIN - 4);
-    body.allowSleep = false;
-    this.physics.addBody(body);
+  private buildPusherBody(): RAPIER.RigidBody {
+    const body = this.physics.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, SLAB_TOP / 2, PUSH_MIN - 4),
+    );
+    this.physics.createCollider(
+      RAPIER.ColliderDesc.cuboid(HALF_W - 0.02, SLAB_TOP / 2, 4).setFriction(SLAB_FRICTION).setRestitution(0.03),
+      body,
+    );
     return body;
   }
 
   private buildRails(): void {
     const mat = new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.6, roughness: 0.35 });
     for (const side of [-1, 1]) {
-      const body = new CANNON.Body({ type: CANNON.Body.STATIC, material: this.materials.rail });
-      body.addShape(new CANNON.Box(new CANNON.Vec3(0.15, RAIL_BODY_H / 2, RAIL_LEN / 2)));
-      body.position.set(side * RAIL_X, -RAIL_BODY_H / 2, PLATE_Z + RAIL_LEN / 2);
-      this.physics.addBody(body);
+      const y = -RAIL_BODY_H / 2;
+      const py = y - RAIL_SINK;
+      const z = PLATE_Z + RAIL_LEN / 2;
+      const body = this.physics.createRigidBody(
+        RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(side * RAIL_X, py, z),
+      );
+      this.physics.createCollider(
+        RAPIER.ColliderDesc.cuboid(0.15, RAIL_BODY_H / 2, RAIL_LEN / 2)
+          .setFriction(RAIL_FRICTION)
+          .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
+          .setRestitution(0.05),
+        body,
+      );
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, RAIL_BODY_H, RAIL_LEN), mat);
-      mesh.position.copy(body.position as unknown as THREE.Vector3);
+      mesh.position.set(side * RAIL_X, y, z);
       mesh.castShadow = true;
       this.scene.add(mesh);
       this.rails.push({ body, mesh });
@@ -173,10 +151,11 @@ export class Machine {
   setRailTop(top: number): void {
     if (Math.abs(top - this.railTop) < 1e-3) return;
     this.railTop = top;
+    const y = top - RAIL_BODY_H / 2;
     for (const r of this.rails) {
-      r.body.position.y = top - RAIL_BODY_H / 2;
-      r.body.aabbNeedsUpdate = true;
-      r.mesh.position.y = r.body.position.y;
+      const t = r.body.translation();
+      r.body.setNextKinematicTranslation({ x: t.x, y: y - RAIL_SINK, z: t.z });
+      r.mesh.position.y = y;
     }
   }
 
@@ -320,7 +299,7 @@ export class Machine {
   }
 
   syncPusherMesh(): void {
-    this.slabMesh.position.set(0, SLAB_TOP / 2, this.pusherBody.position.z);
+    this.slabMesh.position.set(0, SLAB_TOP / 2, this.pusherBody.translation().z);
   }
 
   resize(width: number, height: number): void {

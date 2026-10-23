@@ -1,4 +1,4 @@
-import type * as CANNON from 'cannon-es';
+import type RAPIER from '@dimforge/rapier3d-compat';
 import { PUSH_MAX, PUSH_MIN } from './world';
 
 const CENTER = (PUSH_MAX + PUSH_MIN) / 2;
@@ -11,12 +11,12 @@ export class Pusher {
   private phase = -Math.PI / 2;
   speed = 1;
 
-  constructor(private readonly body: CANNON.Body) {}
+  constructor(private readonly body: RAPIER.RigidBody) {}
 
-  /** Sets velocity so the body lands exactly on the target after this step, which keeps contacts correct. */
+  /** Queues the slab's position for the next physics step; Rapier derives the contact velocity from the move. */
   step(dt: number): void {
     this.phase += ((Math.PI * 2) / BASE_PERIOD) * this.speed * dt;
     const frontNext = CENTER + AMPLITUDE * Math.sin(this.phase);
-    this.body.velocity.z = (frontNext - SLAB_HALF_DEPTH - this.body.position.z) / dt;
+    this.body.setNextKinematicTranslation({ x: 0, y: this.body.translation().y, z: frontNext - SLAB_HALF_DEPTH });
   }
 }

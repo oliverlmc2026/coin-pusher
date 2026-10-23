@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { classifyExit, DROP_Y, DROP_Z, HALF_W, HOLE, KILL_Y, PLATE_Z, type ExitKind, type Machine } from './world';
 
 export type CoinKindId = 'normal' | 'gold' | 'gem' | 'bomb' | 'big';
@@ -7,7 +7,8 @@ export type CoinKindId = 'normal' | 'gold' | 'gem' | 'bomb' | 'big';
 export const GEM_COLORS = [0xff3b5c, 0x33d17a, 0x3ea0ff, 0xffd23f, 0xb15cff] as const;
 export const GEM_NAMES = ['紅寶石', '翡翠', '藍寶石', '黃玉', '紫晶'] as const;
 export const MAX_BODIES = 300;
-const MAX_SPEED = 14;
+const COIN_FRICTION = 0.45;
+const ANGULAR_DAMPING = 0.4;
 
 export interface CoinRef {
   readonly kind: CoinKindId;
@@ -93,7 +94,7 @@ export function rollSpecial(rng: () => number): CoinKindId {
 
 interface Coin extends CoinRef {
   readonly def: CoinKindDef;
-  readonly body: CANNON.Body;
+  readonly body: RAPIER.RigidBody;
   readonly slot: number;
   readonly seq: number;
   exited: ExitKind | null;
@@ -106,7 +107,6 @@ interface KindRuntime {
   mesh: THREE.InstancedMesh;
   freeSlots: number[];
   high: number;
-  pool: CANNON.Body[];
   dirty: boolean;
 }
 
@@ -179,7 +179,6 @@ export class CoinSystem {
         mesh,
         freeSlots: [],
         high: 0,
-        pool: [],
         dirty: false,
       });
     }
@@ -189,26 +188,19 @@ export class CoinSystem {
     return this.alive.length;
   }
 
-  private takeBody(rt: KindRuntime): CANNON.Body {
-    const pooled = rt.pool.pop();
-    if (pooled) return pooled;
-    const { def } = rt;
-    const body = new CANNON.Body({
-      mass: def.mass,
-      material: this.machine.materials.coin,
-      linearDamping: 0.2,
-      angularDamping: 0.4,
-      allowSleep: true,
-      sleepSpeedLimit: 0.15,
-      sleepTimeLimit: 0.6,
-    });
-    if (def.shape === 'sphere') body.addShape(new CANNON.Sphere(def.radius));
-    else {
-      // Boxes that may only pitch about x. Free-tumbling prisms jammed the pile, fully locked boxes froze it
-      // into a lattice that never ejected, and both cost more per contact pair than pitch-only boxes.
-      body.addShape(new CANNON.Box(new CANNON.Vec3(def.radius, def.height / 2, def.radius)));
-      body.angularFactor.set(1, 0, 0);
-    }
+  private createBody(def: CoinKindDef, pos: { x: number; y: number; z: number }, vy: number): RAPIER.RigidBody {
+    const w = this.machine.physics;
+    const desc = RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(pos.x, pos.y, pos.z)
+      .setLinvel(0, vy, 0)
+      .setLinearDamping(0.2)
+      .setAngularDamping(ANGULAR_DAMPING);
+    // Flat discs only slide and stack. Free discs stood on edge and rolled into the jackpot hole, and their
+    // funnelled fall made the hole too easy to hit; bombs stay free so they still roll.
+    if (def.shape === 'disc') desc.lockRotations();
+    const body = w.createRigidBody(desc);
+    const shape = def.shape === 'sphere' ? RAPIER.ColliderDesc.ball(def.radius) : RAPIER.ColliderDesc.cylinder(def.height / 2, def.radius);
+    w.createCollider(shape.setMass(def.mass).setFriction(COIN_FRICTION).setRestitution(0.05), body);
     return body;
   }
 
@@ -221,8 +213,7 @@ export class CoinSystem {
   private release(index: number): void {
     const coin = this.alive[index]!;
     const rt = this.kinds.get(coin.def.id)!;
-    this.machine.physics.removeBody(coin.body);
-    rt.pool.push(coin.body);
+    this.machine.physics.removeRigidBody(coin.body);
     rt.mesh.setMatrixAt(coin.slot, this.hidden);
     rt.dirty = true;
     rt.freeSlots.push(coin.slot);
@@ -240,16 +231,7 @@ export class CoinSystem {
     const { def } = rt;
     const slot = rt.freeSlots.pop() ?? rt.high++;
     if (slot >= rt.mesh.count) rt.mesh.count = slot + 1;
-    const body = this.takeBody(rt);
-    body.position.set(pos.x, pos.y, pos.z);
-    body.quaternion.set(0, 0, 0, 1);
-    body.velocity.set(0, opts.vy ?? 0, 0);
-    body.angularVelocity.set(0, 0, 0);
-    body.force.setZero();
-    body.torque.setZero();
-    body.sleepState = CANNON.Body.AWAKE;
-    body.timeLastSleepy = 0;
-    this.machine.physics.addBody(body);
+    const body = this.createBody(def, pos, opts.vy ?? 0);
     const gemColor = kind === 'gem' ? Math.floor(this.rng() * GEM_COLORS.length) : 0;
     if (kind === 'gem') rt.mesh.setColorAt(slot, this.tmpC.set(GEM_COLORS[gemColor]!));
     if (rt.mesh.instanceColor) rt.mesh.instanceColor.needsUpdate = true;
@@ -263,7 +245,7 @@ export class CoinSystem {
       exited: null,
       rest: 0,
       synced: false,
-      pos: body.position,
+      pos: { ...pos },
     });
   }
 
@@ -327,39 +309,44 @@ export class CoinSystem {
 
   /** Radial impulse on every coin near `pos`, falling off linearly with distance. */
   applyBlast(pos: { x: number; y: number; z: number }, radius: number, strength: number): void {
-    const dir = new CANNON.Vec3();
     for (const coin of this.alive) {
       if (coin.exited) continue;
       const b = coin.body;
-      dir.set(b.position.x - pos.x, b.position.y - pos.y, b.position.z - pos.z);
-      const d = dir.length();
+      const t = b.translation();
+      let dx = t.x - pos.x;
+      let dy = t.y - pos.y;
+      let dz = t.z - pos.z;
+      const d = Math.hypot(dx, dy, dz);
       if (d > radius || d < 1e-4) continue;
-      dir.scale(1 / d, dir);
-      dir.y = Math.max(dir.y, 0) + 0.45;
-      const k = strength * b.mass * (1 - d / radius);
-      b.wakeUp();
-      b.applyImpulse(new CANNON.Vec3(dir.x * k, dir.y * k, dir.z * k));
-      b.angularVelocity.set((this.rng() - 0.5) * 8, (this.rng() - 0.5) * 8, (this.rng() - 0.5) * 8);
+      dx /= d;
+      dz /= d;
+      dy = Math.max(dy / d, 0) + 0.45;
+      const k = strength * coin.def.mass * (1 - d / radius);
+      b.applyImpulse({ x: dx * k, y: dy * k, z: dz * k }, true);
+      // A locked body would still integrate an angvel we set, so only free bodies are spun.
+      if (coin.def.shape === 'sphere') b.setAngvel({ x: (this.rng() - 0.5) * 8, y: (this.rng() - 0.5) * 8, z: (this.rng() - 0.5) * 8 }, true);
     }
   }
 
-  /** Per physics step: clamp speed (anti-tunnelling), detect exits, run settle behaviours, cull fallen bodies. */
+  /** Per physics step: detect exits, run settle behaviours, cull fallen bodies. */
   postStep(dt: number): void {
     for (let i = this.alive.length - 1; i >= 0; i--) {
       const coin = this.alive[i]!;
       const b = coin.body;
-      const v = b.velocity;
-      const sp2 = v.x * v.x + v.y * v.y + v.z * v.z;
-      if (sp2 > MAX_SPEED * MAX_SPEED) v.scale(MAX_SPEED / Math.sqrt(sp2), v);
+      const p = b.translation();
+      coin.pos.x = p.x;
+      coin.pos.y = p.y;
+      coin.pos.z = p.z;
 
       if (!coin.exited) {
-        const exit = classifyExit(b.position);
+        const exit = classifyExit(p);
         if (exit) {
           coin.exited = exit;
           this.events.exit(coin.def, exit);
           coin.def.onExit?.(this.ctx, coin, exit);
         } else if (coin.def.onSettle && coin.def.settleAfter !== undefined) {
-          coin.rest = sp2 < 0.12 ? coin.rest + dt : 0;
+          const v = b.linvel();
+          coin.rest = v.x * v.x + v.y * v.y + v.z * v.z < 0.12 ? coin.rest + dt : 0;
           if (coin.rest >= coin.def.settleAfter && coin.def.onSettle(this.ctx, coin) === 'consume') {
             this.release(i);
             continue;
@@ -367,19 +354,21 @@ export class CoinSystem {
         }
       }
       // Coins can be squeezed through the back plate by the retracting slab; they are unreachable, so recycle them.
-      if (b.position.y < KILL_Y || b.position.z < PLATE_Z - 0.4) this.release(i);
+      if (p.y < KILL_Y || p.z < PLATE_Z - 0.4) this.release(i);
     }
   }
 
   syncMeshes(): void {
     for (const coin of this.alive) {
       const b = coin.body;
-      const sleeping = b.sleepState === CANNON.Body.SLEEPING;
+      const sleeping = b.isSleeping();
       if (sleeping && coin.synced) continue;
       coin.synced = sleeping;
       const rt = this.kinds.get(coin.def.id)!;
-      this.tmpP.set(b.position.x, b.position.y, b.position.z);
-      this.tmpQ.set(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+      const t = b.translation();
+      const q = b.rotation();
+      this.tmpP.set(t.x, t.y, t.z);
+      this.tmpQ.set(q.x, q.y, q.z, q.w);
       rt.mesh.setMatrixAt(coin.slot, this.tmpM.compose(this.tmpP, this.tmpQ, this.one));
       rt.dirty = true;
     }
@@ -393,7 +382,7 @@ export class CoinSystem {
   /** Test hook data. */
   stats(): { bodies: number; awake: number } {
     let awake = 0;
-    for (const c of this.alive) if (c.body.sleepState !== CANNON.Body.SLEEPING) awake++;
+    for (const c of this.alive) if (!c.body.isSleeping()) awake++;
     return { bodies: this.alive.length, awake };
   }
 }

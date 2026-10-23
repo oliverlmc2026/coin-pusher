@@ -1,4 +1,5 @@
 import './style.css';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { Sfx } from './audio';
 import { CoinSystem, MAX_BODIES, type CoinKindDef, type CoinKindId, type KindCtx } from './coins';
 import { Game } from './game';
@@ -9,6 +10,8 @@ import { OUTCOMES, SlotController, type Effect, type Outcome } from './slot';
 import { GEM_NAMES } from './coins';
 import { Ui } from './ui';
 import { Machine, type ExitKind } from './world';
+
+await RAPIER.init();
 
 const FIXED = 1 / 60;
 const MAX_SUBSTEPS = 5;
@@ -189,7 +192,7 @@ function fixedStep(): void {
   }
 
   const t0 = performance.now();
-  machine.physics.step(FIXED);
+  machine.physics.step();
   stepMs += (performance.now() - t0 - stepMs) * 0.05;
   coins.postStep(FIXED);
 }
@@ -207,7 +210,7 @@ resize();
 
 coins.prefill();
 for (let i = 0; i < WARMUP_STEPS; i++) {
-  machine.physics.step(FIXED);
+  machine.physics.step();
   coins.postStep(FIXED);
 }
 warmingUp = false;
@@ -250,7 +253,6 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('debug')) {
   box.style.cssText = 'position:fixed;left:6px;bottom:40px;z-index:99;margin:0;padding:6px 8px;font:11px/1.4 monospace;color:#0f0;background:rgba(0,0,0,.75);border-radius:6px;pointer-events:none';
   document.body.appendChild(box);
   const ptr = { down: 0, up: 0, cancel: 0 };
-  machine.physics.doProfiling = true;
   canvas.addEventListener('pointerdown', () => ptr.down++);
   canvas.addEventListener('pointerup', () => ptr.up++);
   canvas.addEventListener('pointercancel', () => ptr.cancel++);
@@ -271,8 +273,7 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('debug')) {
         dpr: window.devicePixelRatio,
         canvas: `${canvas.width}x${canvas.height}`,
         ptr,
-        profile: Object.fromEntries(Object.entries(machine.physics.profile).map(([k, v]) => [k, +v.toFixed(2)])),
-        contacts: machine.physics.contacts.length,
+        awake: coins.stats().awake,
         ua: navigator.userAgent,
       };
       fetch('/__perf', { method: 'POST', body: JSON.stringify(stats), keepalive: true }).catch(() => {});

@@ -1,6 +1,6 @@
 # 推銀仔機
 
-瀏覽器 3D 推銀仔機遊戲。Vite + TypeScript + three.js + cannon-es，冇後端，進度存喺 localStorage。
+瀏覽器 3D 推銀仔機遊戲。Vite + TypeScript + three.js + Rapier (WASM)，冇後端，進度存喺 localStorage。
 
 ## 點樣行
 
