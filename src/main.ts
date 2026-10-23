@@ -1,8 +1,12 @@
 import './style.css';
-import { CoinSystem, GEM_COLORS, MAX_BODIES, type CoinKindDef, type CoinKindId, type KindCtx } from './coins';
+import { CoinSystem, MAX_BODIES, type CoinKindDef, type CoinKindId, type KindCtx } from './coins';
+import { Game } from './game';
 import { Input } from './input';
 import { Pusher } from './pusher';
-import { OUTCOMES, SlotController, type Effect } from './slot';
+import { loadSave, type SaveData } from './save';
+import { OUTCOMES, SlotController, type Effect, type Outcome } from './slot';
+import { GEM_NAMES } from './coins';
+import { Ui } from './ui';
 import { Machine, type ExitKind } from './world';
 
 const FIXED = 1 / 60;
@@ -11,57 +15,77 @@ const RAIN_PER_SEC = 30;
 const SPECIAL_PER_SEC = 6;
 const HOLD_REPEAT = 0.2;
 const WALL_TOP = 2.8;
-const RAIL_BASE = 0.5;
 const RAIL_SPEED = 8;
-const GEM_SET_BONUS = 500;
 const WARMUP_STEPS = 150;
 const SLOW_STEP_MS = 7;
 const SLOW_CAP = 180;
-const START_CREDITS = 100;
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const hud = document.getElementById('hud') as HTMLElement;
-const creditsEl = document.createElement('b');
-creditsEl.className = 'credits-n';
-const creditsBox = document.createElement('div');
-creditsBox.className = 'credits';
-creditsBox.append(creditsEl);
-const slotHost = document.createElement('div');
-slotHost.className = 'slot-host';
-hud.append(creditsBox, slotHost);
 
-let credits = START_CREDITS;
-const setCredits = (n: number) => {
-  credits = n;
-  creditsEl.textContent = String(credits);
+const game = new Game(loadSave());
+const sfx = {
+  muted: false,
+  resume() {},
+  drop() {},
+  win(_v: number) {},
+  lost() {},
+  bomb() {},
+  spinTick() {},
+  spinStart() {},
+  jackpot() {},
+  gem() {},
+  buy() {},
+  deny() {},
+  click() {},
 };
-setCredits(credits);
-
 const machine = new Machine(canvas);
 const pusher = new Pusher(machine.pusherBody);
+
 const counters = { wins: 0, losts: 0, jackpots: 0, winCredits: 0 };
-let holdCooldown = 0;
 let rainLeft = 0;
 let rainAcc = 0;
 let specialAcc = 0;
 const specialQueue: CoinKindId[] = [];
 let wallLeft = 0;
 let railTop = 0;
-const gems: boolean[] = GEM_COLORS.map(() => false);
+let autoAcc = 0;
+let autoT = 0;
+let holdCooldown = 0;
 let stepMs = 0;
 let warmingUp = true;
+
+const ui = new Ui(hud, game, {
+  onMuteToggle() {
+    sfx.muted = !sfx.muted;
+    game.setMuted(sfx.muted);
+    ui.renderMute();
+    sfx.resume();
+  },
+  onBailout() {
+    if (game.bailout()) ui.toast('派咗 10 點救濟金，繼續加油！', 'good');
+  },
+  onBuy(_id, ok) {
+    if (ok) sfx.buy();
+    else sfx.deny();
+  },
+  onClick: () => sfx.click(),
+});
 
 const kindCtx: KindCtx = {
   explode(pos, radius, strength) {
     coins.applyBlast(pos, radius, strength);
     machine.burst(pos, radius, 0xff8a1f);
+    sfx.bomb();
   },
   collectGem(color) {
-    gems[color] = true;
-    if (gems.every(Boolean)) {
-      gems.fill(false);
-      setCredits(credits + GEM_SET_BONUS);
-    }
+    const r = game.collectGem(color);
+    sfx.gem();
+    if (r.kind === 'set') {
+      ui.toast(`集齊五色寶石！+${r.credits}`, 'great');
+      sfx.jackpot();
+    } else if (r.kind === 'duplicate') ui.toast(`${GEM_NAMES[color]}（重複） +${r.credits}`, 'good');
+    else ui.toast(`獲得 ${GEM_NAMES[color]}`, 'good');
   },
 };
 
@@ -70,9 +94,15 @@ function onExit(def: CoinKindDef, exit: ExitKind): void {
   if (exit === 'win') {
     counters.wins++;
     counters.winCredits += def.value;
-    setCredits(credits + def.value);
-  } else if (exit === 'lost') counters.losts++;
-  else {
+    if (def.value > 0) {
+      game.addCredits(def.value);
+      ui.noteWin(def.value);
+      sfx.win(def.value);
+    }
+  } else if (exit === 'lost') {
+    counters.losts++;
+    sfx.lost();
+  } else {
     counters.jackpots++;
     slot.trigger();
   }
@@ -94,16 +124,25 @@ function applyEffect(e: Effect): void {
   }
 }
 
-const slot = new SlotController(slotHost, Math.random, {
-  onSpinStart() {},
-  onTick() {},
-  onResolved: (o) => applyEffect(o.effect),
+const slot = new SlotController(ui.slotHost, Math.random, {
+  onSpinStart: () => sfx.spinStart(),
+  onTick: () => sfx.spinTick(),
+  onResolved(o: Outcome) {
+    applyEffect(o.effect);
+    game.recordJackpot(o.prize);
+    ui.toast(o.label, 'great');
+    sfx.jackpot();
+  },
 });
 
 function tryDrop(x: number): boolean {
-  if (credits < 1) return false;
-  setCredits(credits - 1);
-  coins.drop(x, 1, 0.08);
+  if (!game.trySpend(1)) {
+    sfx.deny();
+    ui.toast('信用點不足', 'bad');
+    return false;
+  }
+  coins.drop(x, game.effect('coinsPerDrop'), game.effect('specialChance'));
+  sfx.drop();
   return true;
 }
 
@@ -113,11 +152,13 @@ const input = new Input(canvas, machine, (x) => {
 });
 
 function fixedStep(): void {
+  pusher.speed = game.effect('pusherSpeed');
   pusher.step(FIXED);
+
   if (rainLeft > 0) {
     rainAcc += RAIN_PER_SEC * FIXED;
     while (rainAcc >= 1 && rainLeft > 0) {
-      coins.rain(0.08);
+      coins.rain(game.effect('specialChance'));
       rainAcc--;
       rainLeft--;
     }
@@ -129,11 +170,23 @@ function fixedStep(): void {
       specialAcc--;
     }
   } else specialAcc = 0;
+
   wallLeft = Math.max(0, wallLeft - FIXED);
-  const target = wallLeft > 0 ? WALL_TOP : RAIL_BASE;
+  const perm = game.effect('sideWall');
+  const target = wallLeft > 0 ? Math.max(perm, WALL_TOP) : perm;
   const dy = target - railTop;
   railTop += Math.sign(dy) * Math.min(Math.abs(dy), RAIL_SPEED * FIXED);
   machine.setRailTop(railTop);
+
+  const rate = game.effect('autoDropper');
+  if (rate > 0) {
+    autoT += FIXED;
+    autoAcc += rate * FIXED;
+    if (autoAcc >= 1) {
+      autoAcc -= 1;
+      tryDrop(Math.sin(autoT * 1.1) * 4.2);
+    }
+  }
   if (input.holding) {
     holdCooldown -= FIXED;
     if (holdCooldown <= 0) {
@@ -141,6 +194,7 @@ function fixedStep(): void {
       tryDrop(input.aimX);
     }
   }
+
   const t0 = performance.now();
   machine.physics.step(FIXED);
   stepMs += (performance.now() - t0 - stepMs) * 0.05;
@@ -152,6 +206,10 @@ function resize(): void {
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) game.flush();
+});
+window.addEventListener('pagehide', () => game.flush());
 resize();
 
 coins.prefill();
@@ -176,6 +234,7 @@ function frame(now: number): void {
   if (steps === MAX_SUBSTEPS) acc = 0;
   coins.cap = stepMs > SLOW_STEP_MS ? SLOW_CAP : MAX_BODIES;
   slot.update(dt);
+  ui.setWall(wallLeft);
   machine.updateFx(dt);
   machine.syncPusherMesh();
   coins.syncMeshes();
@@ -187,7 +246,7 @@ requestAnimationFrame(frame);
 if (import.meta.env.DEV) {
   window.__game = {
     get credits() {
-      return credits;
+      return game.credits;
     },
     get bodies() {
       return coins.count;
@@ -195,11 +254,16 @@ if (import.meta.env.DEV) {
     get awake() {
       return coins.stats().awake;
     },
-    get slotPhase() {
-      return slot.state.phase;
+    get save() {
+      return game.save;
     },
+    spawn: (kind: CoinKindId) => coins.spawnKind(kind),
+    collectGem: (color: number) => kindCtx.collectGem(color),
     get stepMs() {
       return stepMs;
+    },
+    get slotPhase() {
+      return slot.state.phase;
     },
     get counters() {
       return { ...counters };
@@ -209,11 +273,10 @@ if (import.meta.env.DEV) {
       slot.forcedNext = OUTCOMES.find((o) => o.id === id) ?? null;
       slot.trigger();
     },
-    spawn: (kind: CoinKindId) => coins.spawnKind(kind),
     advance(seconds: number) {
       for (let i = 0; i < seconds / FIXED; i++) fixedStep();
     },
-    giveCredits: (n: number) => setCredits(credits + n),
+    giveCredits: (n: number) => game.addCredits(n),
   };
 }
 
@@ -225,10 +288,12 @@ declare global {
       readonly awake: number;
       readonly slotPhase: string;
       readonly stepMs: number;
+      readonly save: SaveData;
+      spawn(kind: CoinKindId): void;
+      collectGem(color: number): void;
       readonly counters: { wins: number; losts: number; jackpots: number; winCredits: number };
       drop(x: number): boolean;
       forceSlot(outcomeId?: string): void;
-      spawn(kind: CoinKindId): void;
       advance(seconds: number): void;
       giveCredits(n: number): void;
     };
