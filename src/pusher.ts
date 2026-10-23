@@ -3,7 +3,7 @@ import { PUSH_MAX, PUSH_MIN } from './world';
 
 const CENTER = (PUSH_MAX + PUSH_MIN) / 2;
 const AMPLITUDE = (PUSH_MAX - PUSH_MIN) / 2;
-const BASE_PERIOD = 7;
+const BASE_PERIOD = 12;
 const SLAB_HALF_DEPTH = 4;
 
 /** Drives the kinematic slab along z; its front face oscillates between PUSH_MIN and PUSH_MAX. */
