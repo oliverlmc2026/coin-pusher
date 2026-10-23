@@ -3,7 +3,7 @@ import { UPGRADES, upgradeCost, type UpgradeId } from './shop';
 
 export type GemResult = { kind: 'new' } | { kind: 'duplicate'; credits: number } | { kind: 'set'; credits: number };
 
-const SET_BONUS = 500;
+const SET_BONUS = 200;
 const DUPLICATE_BONUS = 1;
 const BAILOUT = 10;
 

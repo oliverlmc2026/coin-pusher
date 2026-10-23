@@ -3,7 +3,8 @@ import type { CoinKindId } from './coins';
 export type Effect =
   | { kind: 'rain'; n: number }
   | { kind: 'spawnSpecial'; coin: CoinKindId; count: number }
-  | { kind: 'wall'; seconds: number };
+  | { kind: 'wall'; seconds: number }
+  | { kind: 'none' };
 
 export interface Outcome {
   readonly id: string;
@@ -13,16 +14,19 @@ export interface Outcome {
   /** Nominal credit worth, used for the jackpot leaderboard. */
   readonly prize: number;
   readonly effect: Effect;
+  /** Per-reel faces when they should differ from `symbol`, e.g. a near miss. */
+  readonly reelSymbols?: readonly [string, string, string];
 }
 
 export const OUTCOMES: readonly Outcome[] = [
-  { id: 'rain10', weight: 30, label: '銀幣雨 x10', symbol: '🍒', prize: 10, effect: { kind: 'rain', n: 10 } },
-  { id: 'rain30', weight: 17, label: '銀幣雨 x30', symbol: '🔔', prize: 30, effect: { kind: 'rain', n: 30 } },
-  { id: 'rain100', weight: 4, label: '超級銀幣雨 x100', symbol: '7️⃣', prize: 100, effect: { kind: 'rain', n: 100 } },
-  { id: 'gold', weight: 14, label: '金幣 x5', symbol: '⭐', prize: 50, effect: { kind: 'spawnSpecial', coin: 'gold', count: 5 } },
+  { id: 'rain6', weight: 30, label: '銀幣雨 x6', symbol: '🍒', prize: 6, effect: { kind: 'rain', n: 6 } },
+  { id: 'rain18', weight: 17, label: '銀幣雨 x18', symbol: '🔔', prize: 18, effect: { kind: 'rain', n: 18 } },
+  { id: 'rain60', weight: 4, label: '超級銀幣雨 x60', symbol: '7️⃣', prize: 60, effect: { kind: 'rain', n: 60 } },
+  { id: 'gold', weight: 14, label: '金幣 x5', symbol: '⭐', prize: 25, effect: { kind: 'spawnSpecial', coin: 'gold', count: 5 } },
   { id: 'gem', weight: 4, label: '寶石 x2', symbol: '💎', prize: 20, effect: { kind: 'spawnSpecial', coin: 'gem', count: 2 } },
   { id: 'big', weight: 9, label: '大幣 x3', symbol: '🪙', prize: 15, effect: { kind: 'spawnSpecial', coin: 'big', count: 3 } },
   { id: 'bomb', weight: 6, label: '炸彈 x3', symbol: '💣', prize: 5, effect: { kind: 'spawnSpecial', coin: 'bomb', count: 3 } },
+  { id: 'miss', weight: 90, label: '銘謝惠顧', symbol: '💨', prize: 0, effect: { kind: 'none' }, reelSymbols: ['7️⃣', '7️⃣', '💨'] },
   { id: 'wall', weight: 12, label: '護欄 10 秒', symbol: '🧱', prize: 20, effect: { kind: 'wall', seconds: 10 } },
 ];
 
@@ -46,6 +50,10 @@ export function pickOutcome(rng: () => number): Outcome {
     if (r <= 0) return o;
   }
   return OUTCOMES[0]!;
+}
+
+function reelFace(o: Outcome, reel: number): string {
+  return o.reelSymbols?.[reel] ?? o.symbol;
 }
 
 export function startSpin(rng: () => number): SlotState {
@@ -124,7 +132,7 @@ export class SlotController {
       const frame = Math.floor(s.elapsed * 14);
       this.reels.forEach((el, i) => {
         const stopped = s.elapsed >= REEL_STOP_AT[i]!;
-        el.textContent = stopped ? s.outcome.symbol : SYMBOLS[(frame + i * 3) % SYMBOLS.length]!;
+        el.textContent = stopped ? reelFace(s.outcome, i) : SYMBOLS[(frame + i * 3) % SYMBOLS.length]!;
         el.classList.toggle('stopped', stopped);
       });
       if (frame !== this.lastTick) {
@@ -132,8 +140,8 @@ export class SlotController {
         this.hooks.onTick();
       }
     } else {
-      this.reels.forEach((el) => {
-        el.textContent = s.outcome.symbol;
+      this.reels.forEach((el, i) => {
+        el.textContent = reelFace(s.outcome, i);
         el.classList.add('stopped');
       });
       this.caption.textContent = s.outcome.label;

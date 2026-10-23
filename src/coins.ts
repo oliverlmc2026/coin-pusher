@@ -42,7 +42,7 @@ export interface CoinKindDef {
 
 export const COIN_KINDS: Record<CoinKindId, CoinKindDef> = {
   normal: { id: 'normal', label: '銀幣', shape: 'disc', radius: 0.5, height: 0.2, mass: 1, value: 1, color: 0xdfe3ea, weight: 0 },
-  gold: { id: 'gold', label: '金幣', shape: 'disc', radius: 0.5, height: 0.2, mass: 1, value: 10, color: 0xffc83a, weight: 5 },
+  gold: { id: 'gold', label: '金幣', shape: 'disc', radius: 0.5, height: 0.2, mass: 1, value: 5, color: 0xffc83a, weight: 5 },
   big: { id: 'big', label: '大幣', shape: 'disc', radius: 0.8, height: 0.3, mass: 3, value: 5, color: 0xff9a4a, weight: 3 },
   gem: {
     id: 'gem',

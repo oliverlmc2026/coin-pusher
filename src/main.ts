@@ -115,6 +115,10 @@ const slot = new SlotController(ui.slotHost, Math.random, {
   onSpinStart: () => sfx.spinStart(),
   onTick: () => sfx.spinTick(),
   onResolved(o: Outcome) {
+    if (o.effect.kind === 'none') {
+      ui.toast(o.label, 'bad');
+      return;
+    }
     applyEffect(o.effect);
     game.recordJackpot(o.prize);
     ui.toast(o.label, 'great');
@@ -123,12 +127,13 @@ const slot = new SlotController(ui.slotHost, Math.random, {
 });
 
 function tryDrop(x: number): boolean {
-  if (!game.trySpend(1)) {
+  const n = Math.min(game.effect('coinsPerDrop'), game.credits);
+  if (n < 1 || !game.trySpend(n)) {
     sfx.deny();
     ui.toast('信用點不足', 'bad');
     return false;
   }
-  coins.drop(x, game.effect('coinsPerDrop'), game.effect('specialChance'));
+  coins.drop(x, n, game.effect('specialChance'));
   sfx.drop();
   return true;
 }
