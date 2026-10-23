@@ -43,6 +43,7 @@ let autoT = 0;
 let stepMs = 0;
 const frameStats = { frames: 0, capped: 0, ms: 0, physMs: 0, renderMs: 0 };
 let warmingUp = true;
+let paused = false;
 
 const ui = new Ui(hud, game, {
   onMuteToggle() {
@@ -50,6 +51,10 @@ const ui = new Ui(hud, game, {
     game.setMuted(sfx.muted);
     ui.renderMute();
     sfx.resume();
+  },
+  onPauseToggle() {
+    paused = !paused;
+    ui.setPaused(paused);
   },
   onBailout() {
     if (game.bailout()) ui.toast('派咗 10 點救濟金，繼續加油！', 'good');
@@ -206,7 +211,8 @@ warmingUp = false;
 let last = performance.now();
 let acc = 0;
 function frame(now: number): void {
-  const dt = Math.min((now - last) / 1000, 0.1);
+  // A zero dt freezes physics, the slot, effects and the auto-dropper while rendering continues.
+  const dt = paused ? 0 : Math.min((now - last) / 1000, 0.1);
   last = now;
   acc += dt;
   let steps = 0;

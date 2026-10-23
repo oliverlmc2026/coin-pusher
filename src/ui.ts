@@ -7,6 +7,7 @@ type Tone = 'info' | 'good' | 'great' | 'bad';
 
 export interface UiHooks {
   onMuteToggle(): void;
+  onPauseToggle(): void;
   onBailout(): void;
   onBuy(id: UpgradeId, ok: boolean): void;
   onClick(): void;
@@ -27,6 +28,8 @@ export class Ui {
   private readonly gain = h('span', 'gain');
   private readonly gems = h('div', 'gems');
   private readonly muteBtn = h('button', 'btn', '');
+  private readonly pauseBtn = h('button', 'btn', '暫停');
+  private readonly pausedLayer = h('div', 'paused');
   private readonly wall = h('div', 'wall');
   private readonly bail = h('button', 'bail', '領取救濟金 +10');
   private readonly toasts = h('div', 'toasts');
@@ -49,14 +52,18 @@ export class Ui {
     shop.onclick = () => this.togglePanel('shop');
     lb.onclick = () => this.togglePanel('lb');
     this.muteBtn.onclick = () => hooks.onMuteToggle();
+    this.pauseBtn.onclick = () => hooks.onPauseToggle();
+    this.pausedLayer.onclick = () => hooks.onPauseToggle();
+    this.pausedLayer.append(h('b', undefined, '已暫停'), h('small', undefined, '撳任何位置繼續'));
     this.bail.onclick = () => hooks.onBailout();
-    btns.append(shop, lb, this.muteBtn);
+    btns.append(this.pauseBtn, shop, lb, this.muteBtn);
     top.append(cr, this.gems, btns);
     this.wall.hidden = true;
     this.bail.hidden = true;
     this.sheet.hidden = true;
+    this.pausedLayer.hidden = true;
     const hint = h('div', 'hint', '點擊機器上方任何位置投幣（每粒 1 信用點）');
-    root.append(top, this.wall, this.slotHost, this.toasts, this.bail, hint, this.sheet);
+    root.append(top, this.wall, this.slotHost, this.toasts, this.bail, hint, this.pausedLayer, this.sheet);
     game.subscribe(() => this.render());
     this.render();
     this.renderMute();
@@ -74,6 +81,11 @@ export class Ui {
     });
     if (this.game.save.gemSets > 0) this.gems.append(h('span', 'sets', `x${this.game.save.gemSets}`));
     if (this.sheetKind) this.renderSheet();
+  }
+
+  setPaused(paused: boolean): void {
+    this.pauseBtn.textContent = paused ? '繼續' : '暫停';
+    this.pausedLayer.hidden = !paused;
   }
 
   renderMute(): void {

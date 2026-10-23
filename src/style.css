@@ -53,6 +53,13 @@ html, body {
   position: absolute; left: 50%; bottom: calc(var(--safe-b) + 70px); transform: translateX(-50%);
   background: var(--pink); border: 0; font-weight: 700;
 }
+.paused {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(10, 6, 20, 0.55); pointer-events: auto; cursor: pointer;
+}
+.paused[hidden] { display: none; }
+.paused b { font-size: 32px; color: var(--gold); }
+.paused small { font-size: 14px; opacity: 0.8; }
 .hint {
   position: absolute; left: 0; right: 0; bottom: calc(var(--safe-b) + 14px); text-align: center; font-size: 13px; opacity: 0.75; pointer-events: none;
 }
