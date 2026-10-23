@@ -29,7 +29,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     baseCost: 40,
     growth: 1.7,
     maxLevel: 5,
-    effect: (l) => 0.2 + 0.36 * l,
+    effect: (l) => 0.05 + 0.39 * l,
     show: (e) => `${e.toFixed(1)} 格`,
   },
   coinsPerDrop: {
@@ -49,7 +49,7 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
     baseCost: 60,
     growth: 1.7,
     maxLevel: 8,
-    effect: (l) => 0.08 + 0.025 * l,
+    effect: (l) => 0.04 + 0.03 * l,
     show: (e) => `${Math.round(e * 100)}%`,
   },
   autoDropper: {
