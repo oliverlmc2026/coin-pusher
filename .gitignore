@@ -2,3 +2,41 @@ node_modules
 dist
 *.log
 .DS_Store
+
+# --- added by gitignore-generator ---
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*~
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+*.tsbuildinfo
+coverage/
+
+# Vite
+dist-ssr/
+*.local
+
+# Claude Code (personal settings only; launch.json is shared)
+.claude/settings.local.json
