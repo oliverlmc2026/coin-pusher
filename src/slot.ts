@@ -20,7 +20,7 @@ export const OUTCOMES: readonly Outcome[] = [
   { id: 'rain30', weight: 17, label: '銀幣雨 x30', symbol: '🔔', prize: 30, effect: { kind: 'rain', n: 30 } },
   { id: 'rain100', weight: 4, label: '超級銀幣雨 x100', symbol: '7️⃣', prize: 100, effect: { kind: 'rain', n: 100 } },
   { id: 'gold', weight: 14, label: '金幣 x5', symbol: '⭐', prize: 50, effect: { kind: 'spawnSpecial', coin: 'gold', count: 5 } },
-  { id: 'gem', weight: 10, label: '寶石 x3', symbol: '💎', prize: 30, effect: { kind: 'spawnSpecial', coin: 'gem', count: 3 } },
+  { id: 'gem', weight: 4, label: '寶石 x2', symbol: '💎', prize: 20, effect: { kind: 'spawnSpecial', coin: 'gem', count: 2 } },
   { id: 'big', weight: 9, label: '大幣 x3', symbol: '🪙', prize: 15, effect: { kind: 'spawnSpecial', coin: 'big', count: 3 } },
   { id: 'bomb', weight: 6, label: '炸彈 x3', symbol: '💣', prize: 5, effect: { kind: 'spawnSpecial', coin: 'bomb', count: 3 } },
   { id: 'wall', weight: 12, label: '護欄 10 秒', symbol: '🧱', prize: 20, effect: { kind: 'wall', seconds: 10 } },

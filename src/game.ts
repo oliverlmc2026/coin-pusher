@@ -4,7 +4,7 @@ import { UPGRADES, upgradeCost, type UpgradeId } from './shop';
 export type GemResult = { kind: 'new' } | { kind: 'duplicate'; credits: number } | { kind: 'set'; credits: number };
 
 const SET_BONUS = 500;
-const DUPLICATE_BONUS = 3;
+const DUPLICATE_BONUS = 1;
 const BAILOUT = 10;
 
 /** Live game economy over the persisted model. Mutations notify listeners and schedule an autosave. */
