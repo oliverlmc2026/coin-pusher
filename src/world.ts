@@ -17,6 +17,15 @@ const RAIL_LEN = FRONT_Z - PLATE_Z;
 const RAIL_BODY_H = 4;
 /** Physical rail top sits this far below the drawn one, so coins pushed hard into a low rail can ride over it as they did before the Rapier port. */
 const RAIL_SINK = 0.1;
+/** Open gap between a side rail and the cabinet wall, wider than the largest coin radius so coins pushed over the rail tip into it instead of resting against the wall. */
+const GUTTER = 0.9;
+const CAB_T = 0.5;
+const CAB_X = RAIL_X + 0.15 + GUTTER + CAB_T / 2;
+const CAB_HALF_W = CAB_X + CAB_T / 2;
+const CAB_Y = -0.3;
+const CAB_H = 1.4;
+const CAB_Z0 = FLOOR_BACK_Z - 0.25;
+const CAB_Z1 = FRONT_Z + 0.5;
 /** Coins use friction 0.3 with the default Average combine rule, so these give pair values of about 0.18 / 0.43 / 0.1. */
 const FLOOR_FRICTION = 0.05;
 const SLAB_FRICTION = 0.55;
@@ -110,6 +119,12 @@ export class Machine {
     box(sideW / 2, 0.5, midLen / 2, hx + sideW / 2, -0.5, HOLE.z0 + midLen / 2, FLOOR_FRICTION);
     // Back plate: lower edge sits just above the pusher top so it scrapes coins off the slab.
     box(HALF_W + 0.3, 2, 0.2, 0, SLAB_TOP + 0.1 + 2, PLATE_Z, RAIL_FRICTION);
+    // Cabinet walls bounding each side gutter, so coins falling past a rail cannot pass through them.
+    const gutterIn = RAIL_X + 0.15;
+    for (const side of [-1, 1]) {
+      box(CAB_T / 2, CAB_H / 2, (CAB_Z1 - CAB_Z0) / 2, side * CAB_X, CAB_Y, (CAB_Z0 + CAB_Z1) / 2, RAIL_FRICTION);
+      box(GUTTER / 2, CAB_H / 2, 0.25, side * (gutterIn + GUTTER / 2), CAB_Y, FRONT_Z + 0.25, RAIL_FRICTION);
+    }
   }
 
   private buildPusherBody(): RAPIER.RigidBody {
@@ -240,11 +255,15 @@ export class Machine {
     plate.add(sign);
 
     const cab = new THREE.MeshStandardMaterial({ color: 0x5b1636, roughness: 0.6 });
-    addBox(0.5, 1.4, FRONT_Z - FLOOR_BACK_Z + 0.5, -(HALF_W + 0.6), -0.3, (FRONT_Z + FLOOR_BACK_Z) / 2, cab, true);
-    addBox(0.5, 1.4, FRONT_Z - FLOOR_BACK_Z + 0.5, HALF_W + 0.6, -0.3, (FRONT_Z + FLOOR_BACK_Z) / 2, cab, true);
-    addBox(HALF_W * 2 + 1.7, 1.2, 0.5, 0, -0.6, FRONT_Z + 0.1, cab, true);
-    addBox(HALF_W * 2 + 1.7, 0.3, 3.5, 0, -2.6, FRONT_Z + 1.4, new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.6, roughness: 0.4 }));
-    addBox(HALF_W * 2 + 3, 0.3, 20, 0, -3.1, -1, new THREE.MeshStandardMaterial({ color: 0x0a0612 }));
+    const gutterIn = RAIL_X + 0.15;
+    for (const side of [-1, 1]) {
+      addBox(CAB_T, CAB_H, CAB_Z1 - CAB_Z0, side * CAB_X, CAB_Y, (CAB_Z0 + CAB_Z1) / 2, cab, true);
+      addBox(GUTTER, CAB_H, 0.5, side * (gutterIn + GUTTER / 2), CAB_Y, FRONT_Z + 0.25, cab, true);
+    }
+    // Front face flush with the floor edge, so coins falling off the front drop in front of it rather than through it.
+    addBox(gutterIn * 2, 1.2, 0.5, 0, -0.6, FRONT_Z - 0.25, cab, true);
+    addBox(CAB_HALF_W * 2, 0.3, 3.5, 0, -2.6, FRONT_Z + 1.4, new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.6, roughness: 0.4 }));
+    addBox(CAB_HALF_W * 2 + 1.3, 0.3, 20, 0, -3.1, -1, new THREE.MeshStandardMaterial({ color: 0x0a0612 }));
     return slab;
   }
 
