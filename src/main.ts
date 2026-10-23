@@ -17,7 +17,6 @@ const FIXED = 1 / 60;
 const MAX_SUBSTEPS = 5;
 const RAIN_PER_SEC = 30;
 const SPECIAL_PER_SEC = 6;
-const HOLD_REPEAT = 0.2;
 const WALL_TOP = 2.8;
 const RAIL_SPEED = 8;
 const WARMUP_STEPS = 150;
@@ -41,7 +40,6 @@ let wallLeft = 0;
 let railTop = 0;
 let autoAcc = 0;
 let autoT = 0;
-let holdCooldown = 0;
 let stepMs = 0;
 const frameStats = { frames: 0, capped: 0, ms: 0, physMs: 0, renderMs: 0 };
 let warmingUp = true;
@@ -142,10 +140,7 @@ function tryDrop(x: number): boolean {
   return true;
 }
 
-const input = new Input(canvas, machine, (x) => {
-  holdCooldown = HOLD_REPEAT;
-  tryDrop(x);
-});
+new Input(canvas, machine, (x) => tryDrop(x));
 
 function fixedStep(): void {
   pusher.speed = game.effect('pusherSpeed');
@@ -181,13 +176,6 @@ function fixedStep(): void {
     if (autoAcc >= 1) {
       autoAcc -= 1;
       tryDrop(Math.sin(autoT * 1.1) * 4.2);
-    }
-  }
-  if (input.holding) {
-    holdCooldown -= FIXED;
-    if (holdCooldown <= 0) {
-      holdCooldown = HOLD_REPEAT;
-      tryDrop(input.aimX);
     }
   }
 
@@ -284,8 +272,7 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('debug')) {
       `render cpu ${frameStats.renderMs.toFixed(1)} ms\n` +
       `slowed frames ${capPct}%\n` +
       `coins ${coins.count} / cap ${coins.cap}\n` +
-      `pointer down ${ptr.down} up ${ptr.up} cancel ${ptr.cancel}\n` +
-      `holding ${input.holding}`;
+      `pointer down ${ptr.down} up ${ptr.up} cancel ${ptr.cancel}`;
   }, 500);
 }
 

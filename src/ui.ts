@@ -55,7 +55,7 @@ export class Ui {
     this.wall.hidden = true;
     this.bail.hidden = true;
     this.sheet.hidden = true;
-    const hint = h('div', 'hint', '點擊或按住機器上方任何位置投幣（每粒 1 信用點）');
+    const hint = h('div', 'hint', '點擊機器上方任何位置投幣（每粒 1 信用點）');
     root.append(top, this.wall, this.slotHost, this.toasts, this.bail, hint, this.sheet);
     game.subscribe(() => this.render());
     this.render();
