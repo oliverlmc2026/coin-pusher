@@ -83,7 +83,11 @@ export function loadSave(): SaveData {
   }
 }
 
+/** Set by clearSave so the pagehide flush during the reload cannot write the old progress back. */
+let cleared = false;
+
 export function writeSave(data: SaveData): void {
+  if (cleared) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
@@ -92,6 +96,7 @@ export function writeSave(data: SaveData): void {
 }
 
 export function clearSave(): void {
+  cleared = true;
   try {
     localStorage.removeItem(SAVE_KEY);
   } catch {
