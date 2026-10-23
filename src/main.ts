@@ -40,6 +40,7 @@ let autoAcc = 0;
 let autoT = 0;
 let holdCooldown = 0;
 let stepMs = 0;
+const frameStats = { frames: 0, capped: 0, ms: 0, physMs: 0, renderMs: 0 };
 let warmingUp = true;
 
 const ui = new Ui(hud, game, {
@@ -218,22 +219,74 @@ function frame(now: number): void {
   last = now;
   acc += dt;
   let steps = 0;
+  const p0 = performance.now();
   while (acc >= FIXED && steps < MAX_SUBSTEPS) {
     fixedStep();
     acc -= FIXED;
     steps++;
   }
-  if (steps === MAX_SUBSTEPS) acc = 0;
+  if (steps === MAX_SUBSTEPS) {
+    acc = 0;
+    frameStats.capped++;
+  }
+  frameStats.frames++;
+  frameStats.ms += (dt * 1000 - frameStats.ms) * 0.1;
+  frameStats.physMs += (performance.now() - p0 - frameStats.physMs) * 0.1;
   coins.cap = stepMs > SLOW_STEP_MS ? SLOW_CAP : MAX_BODIES;
   slot.update(dt);
   ui.setWall(wallLeft);
   machine.updateFx(dt);
   machine.syncPusherMesh();
   coins.syncMeshes();
+  const r0 = performance.now();
   machine.render();
+  frameStats.renderMs += (performance.now() - r0 - frameStats.renderMs) * 0.1;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+if (import.meta.env.DEV && new URLSearchParams(location.search).has('debug')) {
+  const box = document.createElement('pre');
+  box.style.cssText = 'position:fixed;left:6px;bottom:40px;z-index:99;margin:0;padding:6px 8px;font:11px/1.4 monospace;color:#0f0;background:rgba(0,0,0,.75);border-radius:6px;pointer-events:none';
+  document.body.appendChild(box);
+  const ptr = { down: 0, up: 0, cancel: 0 };
+  machine.physics.doProfiling = true;
+  canvas.addEventListener('pointerdown', () => ptr.down++);
+  canvas.addEventListener('pointerup', () => ptr.up++);
+  canvas.addEventListener('pointercancel', () => ptr.cancel++);
+  let seen = { frames: 0, capped: 0 };
+  let tick = 0;
+  setInterval(() => {
+    const f = frameStats.frames - seen.frames;
+    const capPct = f ? Math.round((100 * (frameStats.capped - seen.capped)) / f) : 0;
+    seen = { frames: frameStats.frames, capped: frameStats.capped };
+    if (++tick % 4 === 0) {
+      const stats = {
+        frameMs: +frameStats.ms.toFixed(1),
+        physPerFrameMs: +frameStats.physMs.toFixed(1),
+        stepMs: +stepMs.toFixed(1),
+        renderCpuMs: +frameStats.renderMs.toFixed(1),
+        cappedPct: capPct,
+        coins: coins.count,
+        dpr: window.devicePixelRatio,
+        canvas: `${canvas.width}x${canvas.height}`,
+        ptr,
+        profile: Object.fromEntries(Object.entries(machine.physics.profile).map(([k, v]) => [k, +v.toFixed(2)])),
+        contacts: machine.physics.contacts.length,
+        ua: navigator.userAgent,
+      };
+      fetch('/__perf', { method: 'POST', body: JSON.stringify(stats), keepalive: true }).catch(() => {});
+    }
+    box.textContent =
+      `frame ${frameStats.ms.toFixed(1)} ms (${Math.round(1000 / Math.max(frameStats.ms, 1))} fps)\n` +
+      `physics ${frameStats.physMs.toFixed(1)} ms/frame, ${stepMs.toFixed(1)} ms/step\n` +
+      `render cpu ${frameStats.renderMs.toFixed(1)} ms\n` +
+      `slowed frames ${capPct}%\n` +
+      `coins ${coins.count} / cap ${coins.cap}\n` +
+      `pointer down ${ptr.down} up ${ptr.up} cancel ${ptr.cancel}\n` +
+      `holding ${input.holding}`;
+  }, 500);
+}
 
 if (import.meta.env.DEV) {
   window.__game = {

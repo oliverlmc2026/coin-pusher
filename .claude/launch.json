@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "coin-pusher", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"], "port": 5173 }
+    { "name": "coin-pusher", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"], "port": 5173 },
+    { "name": "coin-pusher-lan", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "--host", "0.0.0.0", "--port", "5180", "--strictPort"], "port": 5180, "autoPort": false }
   ]
 }
