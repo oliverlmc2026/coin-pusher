@@ -106,6 +106,8 @@ export class Machine {
     const w = this.physics;
     w.timestep = 1 / 60;
     w.integrationParameters.numSolverIterations = 4;
+    // A second PGS pass per iteration settles the squeezed pile, so the pusher no longer pops coins up or flings them out of it.
+    w.integrationParameters.numInternalPgsIterations = 2;
 
     const box = (hx: number, hy: number, hz: number, x: number, y: number, z: number, friction: number) =>
       w.createCollider(
