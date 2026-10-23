@@ -7,7 +7,7 @@ export const PLATE_Z = -4.25;
 export const FLOOR_BACK_Z = -9;
 export const SLAB_TOP = 0.9;
 export const PUSH_MIN = -3.7;
-export const PUSH_MAX = 1.3;
+export const PUSH_MAX = 1.5;
 export const HOLE = { x0: -0.55, x1: 0.55, z0: 2.3, z1: 3.4 } as const;
 export const DROP_Y = 4.5;
 export const DROP_Z = -2.6;
@@ -17,7 +17,7 @@ const RAIL_LEN = FRONT_Z - PLATE_Z;
 const RAIL_BODY_H = 4;
 /** Physical rail top sits this far below the drawn one, so coins pushed hard into a low rail can ride over it as they did before the Rapier port. */
 const RAIL_SINK = 0.1;
-/** Coins use friction 0.45 with the default Average combine rule, so these give pair values of about 0.25 / 0.5 / 0.1. */
+/** Coins use friction 0.3 with the default Average combine rule, so these give pair values of about 0.18 / 0.43 / 0.1. */
 const FLOOR_FRICTION = 0.05;
 const SLAB_FRICTION = 0.55;
 const RAIL_FRICTION = 0.1;

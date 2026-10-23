@@ -7,7 +7,7 @@ export type CoinKindId = 'normal' | 'gold' | 'gem' | 'bomb' | 'big';
 export const GEM_COLORS = [0xff3b5c, 0x33d17a, 0x3ea0ff, 0xffd23f, 0xb15cff] as const;
 export const GEM_NAMES = ['紅寶石', '翡翠', '藍寶石', '黃玉', '紫晶'] as const;
 export const MAX_BODIES = 300;
-const COIN_FRICTION = 0.45;
+const COIN_FRICTION = 0.3;
 const ANGULAR_DAMPING = 0.4;
 
 export interface CoinRef {
