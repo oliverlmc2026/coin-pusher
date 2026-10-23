@@ -12,6 +12,8 @@ export const devFrontExits: { vz: number; dz: number }[] = [];
 const COIN_FRICTION = 0.3;
 /** Rapier contacts are stiff, so the pile passes the slab's full speed to the front coins; this bleeds it off so they leave at the old cannon-es pace. */
 const LINEAR_DAMPING = 1.0;
+/** Discs whose centre reaches the front lip may pitch, so they tip off it like real coins instead of sailing off flat. Earlier pitch let coins dive into the jackpot hole and wedge under each other. */
+const TIP_FROM_Z = FRONT_Z - 0.05;
 const ANGULAR_DAMPING = 0.4;
 
 export interface CoinRef {
@@ -104,6 +106,7 @@ interface Coin extends CoinRef {
   exited: ExitKind | null;
   rest: number;
   synced: boolean;
+  canTip: boolean;
 }
 
 interface KindRuntime {
@@ -249,6 +252,7 @@ export class CoinSystem {
       exited: null,
       rest: 0,
       synced: false,
+      canTip: false,
       pos: { ...pos },
     });
   }
@@ -341,6 +345,10 @@ export class CoinSystem {
       coin.pos.x = p.x;
       coin.pos.y = p.y;
       coin.pos.z = p.z;
+      if (!coin.canTip && coin.def.shape === 'disc' && p.z > TIP_FROM_Z) {
+        coin.canTip = true;
+        b.setEnabledRotations(true, false, false, true);
+      }
 
       if (!coin.exited) {
         const exit = classifyExit(p);
